@@ -1,0 +1,6 @@
+"START_AD.obj",
+"MainBlock.obj",
+"Dallas.obj",
+"rs232.obj" 
+TO "RS_Temperature_Work" 
+RAMSIZE(256) 

@@ -1,0 +1,117 @@
+C51 COMPILER V8.16   RS232                                                                 04/04/2010 17:38:55 PAGE 1   
+
+
+C51 COMPILER V8.16, COMPILATION OF MODULE RS232
+OBJECT MODULE PLACED IN rs232.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE rs232.c BROWSE INCDIR(.\Source) DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include "ADuC832.h"
+   2          #include "rs232.h"
+   3          #include "new_types.h"
+   4          
+   5          struct RS_Port_str RS_Port;
+   6          
+   7          void Timer1_int() interrupt 3
+   8          {
+   9   1       RS_Port.RS_tick++;
+  10   1       RS_Port.RS_tick&=0x3;
+  11   1      
+  12   1       if(!RS_Port.RS_tick)      // RS_Transmit
+  13   1       {
+  14   2        switch(RS_Port.TX_Bit_cnt)
+  15   2        {
+  16   3         case 0:
+  17   3          //Сдвиговый регистр пустой
+  18   3          if(!RS_Port.TX_Ready)       //Data in buffer
+  19   3          {
+  20   4          //Есть байт в буфере на передачу
+  21   4           RS_Port.TX_Byte_shift=RS_Port.TX_Byte;
+  22   4           RS_Port.TX_Ready=1;                //Буфер свободен для записи следующего байта
+  23   4           RS_Port.TX_Bit_cnt=9;
+  24   4      
+  25   4           RS_TX=0;                           //Выдаём стартовый бит
+  26   4          }
+  27   3          break;
+  28   3      
+  29   3         case 1:
+  30   3          RS_Port.TX_Bit_cnt--;
+  31   3          RS_TX=1;                           //Выдаём стоп-бит
+  32   3          break;
+  33   3      
+  34   3         default:
+  35   3          //Сдвиговый регистр не пустой
+  36   3          RS_TX=RS_Port.TX_Byte_shift&0x01;
+  37   3          RS_Port.TX_Byte_shift>>=1;
+  38   3          RS_Port.TX_Bit_cnt--;
+  39   3        }
+  40   2       }
+  41   1      
+  42   1       switch(RS_Port.RX_Bit_cnt)                        // RS_Receive
+  43   1       {
+  44   2        case 0:
+  45   2         //Ищем стартовый бит
+  46   2         if(!RS_RX)
+  47   2          RS_Port.RX_Bit_cnt++;
+  48   2         break;
+  49   2        case 1:
+  50   2         //Ещё раз проверяем наличие стартового бита
+  51   2         if(!RS_RX)
+  52   2         {
+  53   3          RS_Port.RX_latch_tick=RS_Port.RS_tick;
+  54   3          RS_Port.RX_Bit_cnt++;
+  55   3         }
+C51 COMPILER V8.16   RS232                                                                 04/04/2010 17:38:55 PAGE 2   
+
+  56   2         else
+  57   2          RS_Port.RX_Bit_cnt=0;
+  58   2         break;
+  59   2      
+  60   2        case 10:
+  61   2         if(RS_Port.RS_tick==RS_Port.RX_latch_tick)         //Проверяем наличие стопового бита
+  62   2         {
+  63   3          if(RS_RX)
+  64   3          {
+  65   4           RS_Port.RX_Byte=RS_Port.RX_Byte_shift;                   //Есть стоп-бит, записываем байт в буфер
+  66   4               RS_Port.RX_Ready=1;
+  67   4          }
+  68   3          RS_Port.RX_Bit_cnt=0;
+  69   3         }
+  70   2         break;
+  71   2      
+  72   2        default:
+  73   2         if(RS_Port.RS_tick==RS_Port.RX_latch_tick)
+  74   2         {
+  75   3          RS_Port.RX_Byte_shift>>=1;
+  76   3          if(RS_RX)
+  77   3               RS_Port.RX_Byte_shift|=0x80;
+  78   3              RS_Port.RX_Bit_cnt++;
+  79   3         }
+  80   2       } 
+  81   1      }  
+  82          
+  83          void InitRS232(void)
+  84          {
+  85   1       RS_Port.RS_tick=0;     // from 0 to 3
+  86   1       RS_Port.TX_Ready=1;
+  87   1       RS_Port.TX_Bit_cnt=0;
+  88   1      
+  89   1       RS_Port.RX_Ready=0;
+  90   1       RS_Port.RX_Byte=0;
+  91   1       RS_Port.RX_Bit_cnt=0;
+  92   1      }  
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    146    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     10    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

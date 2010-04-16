@@ -1,0 +1,129 @@
+C51 COMPILER V8.16   MAINBLOCK                                                             04/04/2010 17:38:55 PAGE 1   
+
+
+C51 COMPILER V8.16, COMPILATION OF MODULE MAINBLOCK
+OBJECT MODULE PLACED IN MainBlock.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE MainBlock BROWSE INCDIR(.\Source) DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          // Система контроля температуры
+   2          
+   3          #include "ADuC832.h"                      //Библиотека основных прерываний, таймеров и значений
+   4          #include "dallas.h"                               //Библиотека для работы с термометром Dallas
+   5          #include "new_types.h"                    //Библиотека используемых в программе типов
+   6          #include "rs232.h"                                //Библиотека для работы с портом RS 232
+   7          
+   8          BYTE MyTemp=0;                    //Переменная для хранения значения считанной с термометра температуры
+   9          BYTE Temp1=0;
+  10          BYTE Temp2=0;
+  11          BYTE Temp3=0;
+  12          
+  13          void Pause (int);                                 //Функция для внесения задержки
+  14          void Message_Processing(int variable, int num);                           
+  15          
+  16          void main (void)
+  17          {
+  18   1      PLLCON=FINT;                                      //Установка тактовой частоты ядра (32.768 КГц х 512) стр.35 Описания  
+  19   1                                                                        //FINT=0x08 LOCK=0x40 (3й и 6й биты) В общем устанавливаем обработку
+  20   1                                                                        //прерываний.   FINT-FAST INTERRUPT RESPONSE BIT перехват сообщений ядра включен
+  21   1      while(!(PLLCON&LOCK));                    //Ожидаем пока перестройка частоты не закончится
+  22   1                                                                        //тогда бит LOCK будет 0                                                      
+  23   1      TMOD=0;                                                   //Таймеры и задержки  TIMER MODE
+  24   1      TMOD|=M00;                                                //M00=0x01 16-битный счетчик TH0 и TL0  (0 бит)  таймер 0
+  25   1      
+  26   1      TH0=0;                                                    //таймеры для Dallas пока 0
+  27   1      TL0=0;                                                    //Младший бит 0
+  28   1                                                                        
+  29   1      TMOD|=M11;                                                //M11=0x20   TMOD по умолчанию равен 0x00      (0 бит и 5-й бит)
+  30   1                                        //8-ми битный счетчик с авто перезагрузкой
+  31   1                                                                        //Задаем скорость RS 232       таймер 1
+  32   1      TH1=255-73;                                               //255-73=182  16777/12*73=19,151 БИТ/С
+  33   1      TL1=0;                                                    //Младший бит 0
+  34   1      
+  35   1      IP=0;                                                     //регистр приоритета прерываний
+  36   1      PT0=1;                                                    //приоритет "high" для таймера 0
+  37   1      TCON=0;                                                   //настройки таймера 0 и 1     TIMER CONFIGURATION
+  38   1      
+  39   1      TR1=1;                                                    //старт таймера 1
+  40   1      
+  41   1      IEIP2=0;                                                  //вторичный регистр разрешения прерываний
+  42   1      IE=0;                                                     //регистр разрешения прерываний
+  43   1      EA=1;                                                     //разрешение всех источников прерываний для IE
+  44   1      ET0=1;                                                    //разрешение прерываний для таймера 0
+  45   1      
+  46   1      TEMPER=1;                         //Значение ножки с термометром Р2.5 ставим лог 1
+  47   1      InitDallas();                     //Начальные значения термометра
+  48   1      InitRS232();                                      //Начальные значения RS 232
+  49   1      
+  50   1      while (1)                                                 //Вечный цикл
+  51   1         {
+  52   2              MyTemp=TemperatureMeasure();      //Считываем значение температуры
+  53   2              if (MyTemp>0)
+  54   2               switch (Dallas.Dallas_Num)
+  55   2                {
+C51 COMPILER V8.16   MAINBLOCK                                                             04/04/2010 17:38:55 PAGE 2   
+
+  56   3                case 1:
+  57   3                      Temp1=MyTemp;
+  58   3                      MyTemp=0;
+  59   3                 break;
+  60   3                case 2:
+  61   3                      Temp2=MyTemp;
+  62   3                      MyTemp=0;
+  63   3                 break;
+  64   3                case 3:
+  65   3                      Temp3=MyTemp;
+  66   3                      MyTemp=0;
+  67   3                 break;
+  68   3                }
+  69   2      
+  70   2          if (RS_Port.RX_Ready)
+  71   2                if (RS_Port.RX_Byte==0x30)                              
+  72   2               {
+  73   3                    Message_Processing(Temp1, 1);
+  74   3                        Message_Processing(Temp2, 2);
+  75   3                        Message_Processing(Temp3, 3);
+  76   3                        RS_Port.RX_Ready = 0;                   
+  77   3                        Pause (1);
+  78   3                   }
+  79   2         }
+  80   1      }
+  81          
+  82          void Pause (int Time)                     //Функция для внесения задержки
+  83          {
+  84   1       while (Time)
+  85   1        {                                                               
+  86   2        Time--;
+  87   2        }
+  88   1      }
+  89          
+  90          void Message_Processing(int variable, int num)
+  91          {
+  92   1       while(!RS_Port.TX_Ready);
+  93   1       RS_Port.TX_Byte=0xFE;                    //флаг начала
+  94   1       RS_Port.TX_Ready=0;                  //Данные в буфере
+  95   1       while(!RS_Port.TX_Ready);
+  96   1       RS_Port.TX_Byte=variable;                //температура
+  97   1       RS_Port.TX_Ready=0;                  //Данные в буфере
+  98   1       while(!RS_Port.TX_Ready);
+  99   1       RS_Port.TX_Byte=num;  //номер Dallas
+ 100   1       RS_Port.TX_Ready=0;
+ 101   1       while(!RS_Port.TX_Ready);
+ 102   1       RS_Port.TX_Byte=0xFF;                    //флаг конца
+ 103   1       RS_Port.TX_Ready=0;
+ 104   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    191    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      4    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

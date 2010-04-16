@@ -1,0 +1,104 @@
+// Система контроля температуры
+
+#include "ADuC832.h"			  //Библиотека основных прерываний, таймеров и значений
+#include "dallas.h"				  //Библиотека для работы с термометром Dallas
+#include "new_types.h"			  //Библиотека используемых в программе типов
+#include "rs232.h"				  //Библиотека для работы с портом RS 232
+
+BYTE MyTemp=0;                    //Переменная для хранения значения считанной с термометра температуры
+BYTE Temp1=0;
+BYTE Temp2=0;
+BYTE Temp3=0;
+
+void Pause (int);				  //Функция для внесения задержки
+void Message_Processing(int variable, int num);            		  
+
+void main (void)
+{
+PLLCON=FINT;					  //Установка тактовой частоты ядра (32.768 КГц х 512) стр.35 Описания	
+								  //FINT=0x08 LOCK=0x40 (3й и 6й биты) В общем устанавливаем обработку
+								  //прерываний.	  FINT-FAST INTERRUPT RESPONSE BIT перехват сообщений ядра включен
+while(!(PLLCON&LOCK));			  //Ожидаем пока перестройка частоты не закончится
+								  //тогда бит LOCK будет 0							
+TMOD=0;							  //Таймеры и задержки  TIMER MODE
+TMOD|=M00;						  //M00=0x01 16-битный счетчик TH0 и TL0  (0 бит)  таймер 0
+
+TH0=0;							  //таймеры для Dallas пока 0
+TL0=0;							  //Младший бит 0
+								  
+TMOD|=M11;						  //M11=0x20   TMOD по умолчанию равен 0x00	 (0 бит и 5-й бит)
+                                  //8-ми битный счетчик с авто перезагрузкой
+								  //Задаем скорость RS 232	 таймер 1
+TH1=255-73;						  //255-73=182	16777/12*73=19,151 БИТ/С
+TL1=0;							  //Младший бит 0
+
+IP=0;							  //регистр приоритета прерываний
+PT0=1;							  //приоритет "high" для таймера 0
+TCON=0;							  //настройки таймера 0 и 1	TIMER CONFIGURATION
+
+TR1=1;							  //старт таймера 1
+
+IEIP2=0;						  //вторичный регистр разрешения прерываний
+IE=0;							  //регистр разрешения прерываний
+EA=1;							  //разрешение всех источников прерываний для IE
+ET0=1;							  //разрешение прерываний для таймера 0
+
+TEMPER=1;                         //Значение ножки с термометром Р2.5 ставим лог 1
+InitDallas();                     //Начальные значения термометра
+InitRS232();					  //Начальные значения RS 232
+
+while (1)						  //Вечный цикл
+   {
+   	MyTemp=TemperatureMeasure();	  //Считываем значение температуры
+	if (MyTemp>0)
+	 switch (Dallas.Dallas_Num)
+	  {
+	  case 1:
+		Temp1=MyTemp;
+		MyTemp=0;
+	   break;
+	  case 2:
+		Temp2=MyTemp;
+		MyTemp=0;
+	   break;
+	  case 3:
+		Temp3=MyTemp;
+		MyTemp=0;
+	   break;
+  	  }
+
+    if (RS_Port.RX_Ready)
+	  if (RS_Port.RX_Byte==0x30)				  
+         {
+	      Message_Processing(Temp1, 1);
+		  Message_Processing(Temp2, 2);
+		  Message_Processing(Temp3, 3);
+		  RS_Port.RX_Ready = 0;                   
+		  Pause (1);
+	     }
+   }
+}
+
+void Pause (int Time)			  //Функция для внесения задержки
+{
+ while (Time)
+  {								  
+  Time--;
+  }
+}
+
+void Message_Processing(int variable, int num)
+{
+ while(!RS_Port.TX_Ready);
+ RS_Port.TX_Byte=0xFE;			  //флаг начала
+ RS_Port.TX_Ready=0;		      //Данные в буфере
+ while(!RS_Port.TX_Ready);
+ RS_Port.TX_Byte=variable;		  //температура
+ RS_Port.TX_Ready=0;		      //Данные в буфере
+ while(!RS_Port.TX_Ready);
+ RS_Port.TX_Byte=num;  //номер Dallas
+ RS_Port.TX_Ready=0;
+ while(!RS_Port.TX_Ready);
+ RS_Port.TX_Byte=0xFF;			  //флаг конца
+ RS_Port.TX_Ready=0;
+}
